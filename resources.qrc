@@ -1,5 +1,7 @@
 <RCC>
     <qresource prefix="/plugins/showSameOpposite" >
-        <file>icon.png</file>
+        <file>icons/select.png</file>
+        <file>icons/config.png</file>
+        <file>icons/search.png</file>
     </qresource>
 </RCC>

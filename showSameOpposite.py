@@ -60,14 +60,15 @@ import os.path,math
 
 
 
-
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
-from qgis.gui import QgsMapTool, QgsMapMouseEvent, QgsHighlight
+from qgis.gui import QgsMapTool, QgsMapMouseEvent
 from qgis.core import QgsProject, QgsPointXY, QgsGeometry, QgsCoordinateTransform
 from qgis.core import QgsRectangle, QgsFeatureRequest,QgsExpression, QgsWkbTypes,QgsVectorLayer,QgsFillSymbol,QgsFeature
-from PyQt5.QtWidgets import QListWidget, QDialog, QVBoxLayout, QListWidgetItem, QMessageBox
+from qgis.core import QgsRuleBasedRenderer, QgsSymbol
+
+from PyQt5.QtWidgets import QListWidget, QDialog, QVBoxLayout, QListWidgetItem
 
 
 
@@ -85,22 +86,51 @@ from  .layerMonitor import LayerMonitor,spatial_index
 
 distance_dict = {'市区': 500, '县城': 1000, '乡镇': 1500, '农村': 3000}
 net_to_beamwidth = {'4G':60, '5G':40,}
-band_to_radius = {
-                 '800M':200,
-                 '900M':180,
-                 '1.8G':160,
-                 '1800M':160,
-                 '2.1G':140,
-                 '2100M':140,
-                 '2.3G':120,
-                 '2300M':120,
-                 '3.5G':100,
-                 '3500M':100
-}
+sector_radius = 200
 
-
-
-
+band_to_color = {'800M': QgsFillSymbol.createSimple({
+                            'color': '240,0,0,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        }),
+                '900M': QgsFillSymbol.createSimple({
+                            'color': '0,240,0,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        }),
+                '1.8G': QgsFillSymbol.createSimple({
+                            'color': '0,0,240,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        }),
+                '2.1G': QgsFillSymbol.createSimple({
+                            'color': '240,240,0,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        }),
+                '2.4G': QgsFillSymbol.createSimple({
+                            'color': '240,0,240,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        }),
+                '3.5G': QgsFillSymbol.createSimple({
+                            'color': '240,240,240,200',  # RGBA（红色，半透明）
+                            'style': 'solid',
+                            'style_border': 'solid',
+                            'color_border': '0,0,0,0',
+                            'border_width': '0'
+                        })
+                }
 
 
 
@@ -146,9 +176,9 @@ class showSameOpposite:
         self.iface.registerMainWindowAction(self.action_search, 'Shift+F')
         self.iface.registerMainWindowAction(self.action_config, 'Shift+C')
         
-        self.action.setIcon(QIcon(':/plugins/showSameOpposite/select.png'))
-        self.action_search.setIcon(QIcon(':/plugins/showSameOpposite/search.png'))
-        self.action_config.setIcon(QIcon(':/plugins/showSameOpposite/config.png'))
+        self.action.setIcon(QIcon(':/plugins/showSameOpposite/icons/select.png'))
+        self.action_search.setIcon(QIcon(':/plugins/showSameOpposite/icons/search.png'))
+        self.action_config.setIcon(QIcon(':/plugins/showSameOpposite/icons/config.png'))
         
         self.action.triggered.connect(self.run)
         self.action_search.triggered.connect(self.run_search)
@@ -489,7 +519,7 @@ class MultiSelectMapTool(QgsMapTool):
                         sc_new_geom = sc_point.buffer(30 * 0.000009, 4)  # 室内站为 30米的近似圆,  15 segments 为圆弧精度
                     else:
                         if matching_feature['sc_azimuth'] >= 0:
-                            radius=band_to_radius[matching_feature['sc_band']]
+                            radius=sector_radius
                             azimuth = matching_feature['sc_azimuth']
                             beamwidth = net_to_beamwidth[matching_feature['sc_net']]
                             sc_new_geom = create_sector(sc_point, azimuth, radius, beamwidth, 15)
@@ -514,7 +544,7 @@ class MultiSelectMapTool(QgsMapTool):
                         tc_new_geom = tc_point.buffer(30 * 0.000009, 4)  # 室内站为 30米的近似圆,  15 segments 为圆弧精度
                     else:
                         if matching_feature['tc_azimuth'] >= 0:
-                            radius=band_to_radius[matching_feature['tc_band']]
+                            radius=sector_radius
                             azimuth = matching_feature['tc_azimuth']
                             beamwidth = net_to_beamwidth[matching_feature['tc_net']]
                             tc_new_geom = create_sector(tc_point, azimuth, radius, beamwidth, 15)
@@ -552,7 +582,7 @@ class MultiSelectMapTool(QgsMapTool):
                 else:
                     if matching_feature['tc_azimuth']>=0:
 
-                        radius = band_to_radius[matching_feature['tc_band']]
+                        radius = sector_radius
                         azimuth = matching_feature['tc_azimuth']
                         beamwidth = net_to_beamwidth[matching_feature['tc_net']]
                         new_geom = create_sector(tc_point, azimuth, radius, beamwidth, 15)
@@ -572,6 +602,11 @@ class MultiSelectMapTool(QgsMapTool):
 
 
 
+
+
+
+
+
             # 创建新要素并添加到临时图层  (源小区的图形)
             new_sc_feature = QgsFeature(source_layer.fields())
             sc_point = source_feature.geometry()                   # 源小区扇区的原点
@@ -580,7 +615,7 @@ class MultiSelectMapTool(QgsMapTool):
             else:
                 if source_feature['sc_azimuth']>=0:
 
-                    radius = band_to_radius[source_feature['sc_band']]
+                    radius = sector_radius
                     azimuth = source_feature['sc_azimuth']
                     beamwidth = net_to_beamwidth[source_feature['sc_net']]
                     new_sc_geom = create_sector(sc_point, azimuth, radius, beamwidth, 15)
@@ -594,6 +629,11 @@ class MultiSelectMapTool(QgsMapTool):
             print("tc_ecis: ",tc_ecis)
             provider.addFeatures([new_sc_feature])
 
+
+
+
+
+
             # 刷新图层
             temp_layer.updateExtents()
 
@@ -601,14 +641,37 @@ class MultiSelectMapTool(QgsMapTool):
             QgsProject.instance().addMapLayer(temp_layer)
             print("#########################################")
 
+            # 激活图层
+            if source_layer:
+                iface.setActiveLayer(source_layer)
+            # 强制刷新地图画布
+            iface.mapCanvas().refresh()
+
+            # 设置要素样式
+            symbol = QgsFillSymbol.createSimple({
+                'color': '128,128,255,255',  # RGBA（红色，半透明）
+                'style': 'solid',
+                'style_border': 'solid',
+                'color_border': '0,0,0,0'
+            })
+            layer = temp_layer
+
+            for feature in layer.getFeatures():
+                feature_id = feature.id()
+                if feature['same_or_opposite'] in ['region_sc',None]:
+                    is_sc = 'sc'
+                else:
+                    is_sc = 'tc'
+
+                feature_symbol = band_to_color.get(feature[f'{is_sc}_band'], symbol)
+                apply_feature_symbol(layer, feature_id, feature_symbol)
 
 
-
-
-
+            # 强制刷新地图画布
+            # iface.mapCanvas().refresh()
 
             
-            
+            """
             for new_feature in temp_layer.getFeatures():
                 # print(new_feature['same_or_opposite'],type(new_feature['same_or_opposite']))
                 h = QgsHighlight(iface.mapCanvas(), new_feature, temp_layer)
@@ -620,13 +683,13 @@ class MultiSelectMapTool(QgsMapTool):
                 elif str(new_feature['same_or_opposite'])=='NULL':
                     h.setColor(QColor(255, 0, 0,80))          # 红
                 
+            """
 
-            # 强制刷新地图画布
-            # iface.mapCanvas().refresh()
 
-            # 激活图层
-            if source_layer:
-                iface.setActiveLayer(source_layer)
+
+
+
+
 
         except RuntimeError as e:
             print(e)
@@ -743,7 +806,6 @@ def select_distance_features(select_layer, source_fid, distance=500):
         QgsCoordinateReferenceSystem,
         QgsProject,
         QgsSpatialIndex,
-        QgsWkbTypes,
         QgsPointXY
     )
 
@@ -820,16 +882,9 @@ def select_distance_features(select_layer, source_fid, distance=500):
 
     # 初步空间筛选
     candidate_ids = select_spatial_index.intersects(query_bbox)
-
-    # results = []
-    # request = QgsFeatureRequest().setFilterFids(candidate_ids)
-    # results = [f for f in select_layer.getFeatures(request)]
-
-
-
     return candidate_ids
 
-
+# 调用事例
 # select_layer = iface.activeLayer()
 # select_feature = select_layer.getFeature(int(2654))
 # select_distance_features(select_layer, select_feature, 500)
@@ -839,7 +894,79 @@ def select_distance_features(select_layer, source_fid, distance=500):
 
 
 
+def apply_feature_symbol(layer, feature_id, symbol):
+    """
+    为指定要素应用自定义符号
+    :param layer: QgsVectorLayer - 要素所在的矢量图层
+    :param feature_id: int - 目标要素的ID
+    :param symbol: QgsSymbol - 要应用的符号（如 QgsFillSymbol）
+    :return: bool - 是否成功
+    """
+    # 校验输入有效性
+    if not layer.isValid():
+        return False
 
+    if not feature_id>0:
+        return False
+
+    if not symbol:
+        return False
+
+    # 获取或创建规则渲染器
+    renderer = layer.renderer()
+    if not isinstance(renderer, QgsRuleBasedRenderer):
+        # 创建根规则
+        root_rule = QgsRuleBasedRenderer.Rule(None)
+        # 克隆原始渲染器的规则（若存在）
+        if renderer and hasattr(renderer, 'rootRule'):
+            root_rule.appendChild(renderer.rootRule().clone())
+        # 创建新规则渲染器并设置
+        renderer = QgsRuleBasedRenderer(root_rule)
+        layer.setRenderer(renderer)
+
+    # 操作规则树
+    root_rule = renderer.rootRule()
+    # 删除旧规则（基于要素ID）
+    for child in root_rule.children():
+        if child.filterExpression() == f"$id = {feature_id}":
+            root_rule.removeChild(child)
+
+    # 添加新规则
+    new_rule = QgsRuleBasedRenderer.Rule(symbol.clone())
+    new_rule.setFilterExpression(f"$id = {feature_id}")
+    new_rule.setLabel(f"Feature {feature_id} Symbol")
+    root_rule.appendChild(new_rule)
+
+    # 强制刷新图例显示
+    _update_legend(layer)
+
+    # 刷新渲染
+    layer.triggerRepaint()
+    if iface:
+        iface.mapCanvas().refresh()
+
+
+
+def _update_legend(layer):
+    """更新图层图例显示"""
+    # 方法2: 刷新图层树视图（推荐）
+    if iface:
+        iface.layerTreeView().refreshLayerSymbology(layer.id())
+
+    # 刷新界面组件
+    layer.triggerRepaint()
+    if iface:
+        iface.layerTreeView().refreshLayerSymbology(layer.id())
+        iface.mapCanvas().refreshAllLayers()
+
+    # 兼容QGIS <3.14的传统方法
+    try:
+        from qgis.core import Qgis
+        if int(Qgis.QGIS_VERSION.split('.')[1]) <=14:
+            from qgis.core import QgsMapLayerLegendUtils
+            QgsMapLayerLegendUtils.refreshLayerLegend(layer)
+    except Exception as e:
+        print(e)
 
 
 
