@@ -22,52 +22,46 @@
  ***************************************************************************/
 """
 ################################# 远程调试 #################################################
-import sys,os
-debuger_path = os.path.join(os.path.dirname(__file__),'pydevd-pycharm.egg')
-print(debuger_path)
-sys.path.append(debuger_path)
-
-import pydevd_pycharm
-pydevd_pycharm.settrace('localhost', port=53001, stdoutToServer=True, stderrToServer=True)
-###################################################################################################
-
-
+# import sys,os
+# debuger_path = os.path.join(os.path.dirname(__file__),'pydevd-pycharm.egg')
+# print(debuger_path)
+# sys.path.append(debuger_path)
+#
+# import pydevd_pycharm
+# pydevd_pycharm.settrace('localhost', port=53001, stdoutToServer=True, stderrToServer=True)
+# ###################################################################################################
+#
+#
 
 
 
 
 
 from PyQt5.QtWidgets import QMessageBox
-
-
-
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 
-# Initialize Qt resources from file resources.py
+
+from .showSameOpposite_dialog import showSameOppositeDialog,searchDialog
+import os.path
+
+
+
+
+# Initialize Qt resources from file resources.py      # 导入图标
 from .resources import *
 # Import the code for the dialog
 
-from .showSameOpposite_dialog import showSameOppositeDialog,searchDialog
-import os.path,math
 
 
 
 
-
-
-
-
-
-from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
-
 from qgis.gui import QgsMapTool, QgsMapMouseEvent
-from qgis.core import QgsProject, QgsPointXY, QgsGeometry, QgsCoordinateTransform
-from qgis.core import QgsRectangle, QgsFeatureRequest,QgsExpression, QgsWkbTypes,QgsVectorLayer,QgsFillSymbol,QgsFeature
-from qgis.core import QgsRuleBasedRenderer, QgsSymbol
+from qgis.core import QgsProject, QgsGeometry, QgsCoordinateTransform
+from qgis.core import QgsRectangle, QgsFeatureRequest
 
 from PyQt5.QtWidgets import QListWidget, QDialog, QVBoxLayout, QListWidgetItem
 
@@ -78,95 +72,13 @@ from PyQt5.QtWidgets import QListWidget, QDialog, QVBoxLayout, QListWidgetItem
 
 
 
+from .config import select_distance_features,create_temp_layer,deduplicate_by_key
+from .config import distance_dict,run_timer
 
 
 
 # 导入图层触发器  主要用于添加索引对象 和移除临时图层
-from  .layerMonitor import LayerMonitor,spatial_index
-
-
-distance_dict = {'市区': 500, '县城': 1000, '乡镇': 1500, '农村': 3000}
-net_to_beamwidth = {'4G':60, '5G':40,}
-sector_radius = 200
-
-
-
-
-
-def band_to_color(feature):
-    feature_id = feature.id()
-    if feature['same_or_opposite'] in ['region_sc', 'source']:
-        is_sc = 'sc'
-        band_field = 'sc_band'
-    else:
-        is_sc = 'tc'
-        band_field = 'tc_band'
-
-    if feature[band_field] in ['800M','0.8G']:
-        feature_symbol_dict = {
-            'color': '240,80,150,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-    elif feature[band_field] in ['900M','0.9G']:
-        feature_symbol_dict = {
-            'color': '190,210,75,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-    elif feature[band_field] in ['1800M','1.8G']:
-        feature_symbol_dict = {
-            'color': '95,160,220,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-    elif feature[band_field] in ['2100M','2.1G']:
-        feature_symbol_dict = {
-            'color': '250,170,120,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-    elif feature[band_field] in ['3500M','3.5G']:
-        feature_symbol_dict = {
-            'color': '240,240,170,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-    else :
-        feature_symbol_dict = {
-            'color': '128,128,128,190',  # RGBA（红色，半透明）
-            'style': 'solid',
-            'style_border': 'solid',
-            'color_border': '0,0,0,0',
-            'width_border': '0'
-        }
-
-    # 区分 主小区， 同覆盖小区 和对覆盖小区
-    if feature['same_or_opposite']  == 'source' :
-        feature_symbol_dict['color_border'] = '0,255,0,255'
-        feature_symbol_dict['width_border'] = '1'
-
-    elif feature['same_or_opposite'] == 'opposite':
-        feature_symbol_dict['color_border'] = '255,0,0,255'
-        feature_symbol_dict['width_border'] = '1'
-
-    elif feature['same_or_opposite'] == 'same' :
-        feature_symbol_dict['color_border'] = '0,0,255,255'
-        feature_symbol_dict['width_border'] = '1'
-
-    feature_symbol = QgsFillSymbol.createSimple(feature_symbol_dict)
-    return feature_symbol
-
+from .config import LayerMonitor
 
 
 
@@ -200,6 +112,9 @@ class showSameOpposite:
             QCoreApplication.installTranslator(self.translator)
 
         self.monitor = LayerMonitor()   # 创建图层触发监听实例
+
+
+
 
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
@@ -255,9 +170,8 @@ class showSameOpposite:
             self.iface.removePluginMenu(QCoreApplication.translate('showSameOpposite', 'showSameOpposite'), self.action_config)
 
             # 清理信号连接
-            # QgsProject.instance().layersAdded.disconnect(self.monitor.init_existing_layers)
-            QgsProject.instance().layersAdded.disconnect(self.monitor.on_layers_added)
-            QgsProject.instance().layersRemoved.disconnect(self.monitor.on_layers_removed)
+            # QgsProject.instance().layersAdded.disconnect(self.monitor.on_layers_added)
+            # QgsProject.instance().layersRemoved.disconnect(self.monitor.on_layers_removed)
         except Exception as e:
             print(e)
 
@@ -281,19 +195,6 @@ class showSameOpposite:
 
         # show the dialog
         self.search_dlg.show()
-        # Run the dialog event loop
-        result = self.search_dlg.exec_()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
-        
-        # 激活工具
-        selectTool = MultiSelectMapTool(iface.mapCanvas())
-        iface.mapCanvas().setMapTool(selectTool)
-
-
 
 
     def run_config(self):
@@ -315,11 +216,6 @@ class showSameOpposite:
             # substitute with your code.
             pass
 
-        # 激活工具
-        selectTool = MultiSelectMapTool(iface.mapCanvas())
-        iface.mapCanvas().setMapTool(selectTool)
-
-
 
 
 
@@ -336,18 +232,6 @@ class MultiSelectMapTool(QgsMapTool):
         self.source_fid = ''
         self.source_layer = ''
 
-
-    def deduplicate_by_key(self,layer,feature_id_list, key='sc_eci'):      # 要素的列表 安装要素的字段 key : sc_eci 去重
-        # todo
-        # 1. 选择要素时 按照要素的 字段 sc_eci 去重
-        seen = set()
-        result = []
-        for feature_id in feature_id_list:
-            feature = layer.getFeature(feature_id)
-            if feature.attribute(key) not in seen:
-                seen.add(feature.attribute(key))
-                result.append(feature_id)
-        return result
 
 
     def canvasReleaseEvent(self, event: QgsMapMouseEvent):
@@ -371,14 +255,20 @@ class MultiSelectMapTool(QgsMapTool):
                 for feature in layer.getFeatures(request):
                     geom = feature.geometry()
                     if geom.intersects(rect):
-                        found_feature_ids.append(feature.id())
+                        found_feature_ids.append(feature)
 
                 # found_features 列表去重
-                found_feature_ids = self.deduplicate_by_key(layer,found_feature_ids,'sc_eci')
+                found_feature_ids = deduplicate_by_key(found_feature_ids,'sc_eci')
                 # 显示选择对话框
                 self.show_found_features(layer,found_feature_ids)
+
         except Exception as e:
             print(e)
+        finally:
+            print("########################################################################")
+
+
+
 
 
     def show_found_features(self,layer,found_feature_ids):
@@ -393,7 +283,7 @@ class MultiSelectMapTool(QgsMapTool):
                 feature = layer.getFeature(feature_id)
                 # 显示图层名和属性，例如第一个字段的值
                 display_value = f"{feature.attribute('sc_eci')},{feature.attribute('sc_net')},{feature.attribute('sc_cjf')},{feature.attribute('sc_ventor')},{feature.attribute('sc_band')},{feature.attribute('sc_coverage_type')},{feature.attribute('sc_coverage_region')}"
-                print(f"{layer.name()}: {display_value}")
+                # print(f"{layer.name()}: {display_value}")
                 item_text = f"{layer.name()}: {display_value}"
                 item = QListWidgetItem(item_text)
                 item.setData(1024, (layer, feature_id))
@@ -410,20 +300,21 @@ class MultiSelectMapTool(QgsMapTool):
 
                     # 选择要素500米范围内的所有要素
                     source_region = source_feature["sc_coverage_region"]
-                    distance = distance_dict[source_region]
-                    source_distance_feature_ids = select_distance_features(source_layer, source_fid, distance=distance)
 
-                    self.create_temp_layer(source_layer,source_distance_feature_ids, source_fid)
+                    distance = distance_dict[source_region]
+                    source_distance_features = select_distance_features(source_layer, source_fid, distance=distance)
+
+                    create_temp_layer(source_layer,source_distance_features, source_fid)
                     # self.canvas.refresh()
             else:
 
                 # 信息提示弹窗
-                QMessageBox.information(iface.mainWindow(), "提示", "没有选中要素，请检查当前激活图层！")
+                # QMessageBox.information(iface.mainWindow(), "提示", "没有选中要素，请检查当前激活图层！")
                 # 警告弹窗
                 # QMessageBox.warning(None, "警告", "文件路径不存在")
                 # 错误弹窗
                 # QMessageBox.critical(iface.mainWindow(), "错误", "图层加载失败")
-                print("提示", "未选择要素")
+                print("提示", "已取消选择要素.")
             
         else:
             QMessageBox.information(iface.mainWindow(), "提示", "没有选中要素，请检查当前激活图层！")
@@ -433,588 +324,11 @@ class MultiSelectMapTool(QgsMapTool):
 
 
 
-
-
-
-
-    def create_temp_layer(self,source_layer,source_distance_feature_ids,source_fid):
-        tmp_layer_parname = '临时草图_SC_eci_'
-         # 移除选择的元素
-        iface.activeLayer().removeSelection()
-
-
-        # 获取项目中所有图层
-        all_layers = QgsProject.instance().mapLayers().values()
-        # 筛选符合条件的图层
-        layers_to_remove = [layer for layer in all_layers if tmp_layer_parname in layer.name()]
-        # 删除图层并输出结果
-        if layers_to_remove:
-            for layer in layers_to_remove:
-                QgsProject.instance().removeMapLayer(layer.id())
-            print(f"已删除 {len(layers_to_remove)} 个包含 '{tmp_layer_parname}' 的临时图层")
-        else:
-            print(f"未找到临时图层: 包含 '{tmp_layer_parname}' 的图层")
-
-
-
-
-
-
-
-
-        # 获取激活图层
-        # source_layer = self.source_layer
-        # 获取 点击元素的 id 列
-        # source_fid = self.source_fid
-        # source_fid = "[% $id %]"
-
-
-
-
-
-
-
-
-        # 从 id 获取元素
-        try:
-            print('source_layer: ',source_layer, type(source_layer))
-            print('source_distance_feature_ids: ',source_distance_feature_ids, type(source_distance_feature_ids))
-            print('source_fid: ',source_fid, type(source_fid))
-
-
-            source_feature = source_layer.getFeature(int(source_fid))
-            sc_eci = source_feature["sc_eci"]
-            print('sc_eci',sc_eci)
-
-
-
-
-            # todo
-            print("使用 源小区覆盖区域 {'市区':500, '县城':1000, '乡镇':1500, '农村':3000} 米范围内的 目标小区 做为作为查找范围)")
-
-
-            # 老方法:  从图层所有元素中  找出 sc_eci 相同的 目标小区
-            # expression = QgsExpression(f'"sc_eci"={sc_eci}')
-            # request = QgsFeatureRequest(expression)
-            # matching_features = [f for f in source_layer.getFeatures(request)]
-
-            # 新方法:  从 500米范围内的 目标小区中  做为查找范围  找出 sc_eci 相同的 目标小区
-            # matching_features = [f for f in source_distance_features if f['sc_eci'] == sc_eci]
-            matching_feature_ids = []
-            for fid in source_distance_feature_ids:
-                tmp_feature = source_layer.getFeature(int(fid))
-                if tmp_feature['sc_eci'] == sc_eci:
-                    matching_feature_ids.append(fid)
-
-
-
-            # 创建临时内存图层
-            # 从要素获取  几何图形类型 'Polygon'  和 坐标系 srid
-            geometry_type = 'Polygon'
-            srid = '4326'
-            if source_feature:
-                try:
-                    srid = source_layer.crs().authid().split(':')[1]
-                except Exception as e:
-                    print(e)
-
-            print(f"{geometry_type}?crs=EPSG:{srid}")
-            temp_layer = QgsVectorLayer(f"{geometry_type}?crs=EPSG:{srid}", f"{tmp_layer_parname}{sc_eci}", "memory")
-            provider = temp_layer.dataProvider()
-
-
-            # 给图层添加字段（如果需要）
-            source_fields = source_layer.fields()  # 获取源图层的字段结构
-            provider.addAttributes(source_fields)
-            temp_layer.updateFields()  # 刷新字段结构
-
-
-            # 修改图层样式
-            symbol = QgsFillSymbol.createSimple({
-                'color': 'rgba(128, 128, 128, 128)',     # 完全透明填充
-                'outline_color': '#F4F4F4',      # 边框颜色为 #FF0033（RGB 255,0,51）
-                'outline_width': '1'            # 边框宽度为2（单位：毫米）
-            })
-            # 应用符号到图层
-            temp_layer.renderer().setSymbol(symbol)
-            # 强制刷新显示
-            temp_layer.triggerRepaint()
-            iface.mapCanvas().refreshAllLayers()
-
-
-
-
-
-
-
-            # 创建新要素并添加到临时图层  (源小区500米范围内所有的 源小区和目标小区 图形)
-            new_distance_features = []
-            region_eci_set = set()
-
-            for matching_feature_id in source_distance_feature_ids:
-                matching_feature = source_layer.getFeature(int(matching_feature_id))
-                if matching_feature.attribute('sc_eci') not in region_eci_set:
-                    region_eci_set.add(matching_feature.attribute('sc_eci'))
-                    sc_new_feature = QgsFeature(temp_layer.fields())
-                    sc_point = matching_feature.geometry()  # 源小区的图形
-                    # 源小区
-                    if matching_feature['sc_coverage_type'] == '室内':
-                        sc_new_geom = sc_point.buffer(30 * 0.000009, 4)  # 室内站为 30米的近似圆,  15 segments 为圆弧精度
-                    else:
-                        if matching_feature['sc_azimuth'] >= 0:
-                            radius=sector_radius
-                            azimuth = matching_feature['sc_azimuth']
-                            beamwidth = net_to_beamwidth[matching_feature['sc_net']]
-                            sc_new_geom = create_sector(sc_point, azimuth, radius, beamwidth, 15)
-
-                        else:
-                            sc_new_geom = None
-                            print(f"sc_azimuth异常值{matching_feature['sc_azimuth']}")
-                    sc_new_feature.setGeometry(sc_new_geom)  # 设置要素的几何图形
-                    sc_new_feature.setAttributes(matching_feature.attributes())  # 复制属性
-                    sc_new_feature['same_or_opposite'] = 'region_sc'  # 设置 "same_or_opposite" 列的值为 "region"  标识为 500米范围内的 源小区
-                    # layer.updateFeature(new_sc_feature)
-                    new_distance_features.append(sc_new_feature)
-
-                if matching_feature.attribute('sc_eci') not in region_eci_set:
-                    region_eci_set.add(matching_feature.attribute('sc_eci'))
-
-                    tc_new_feature = QgsFeature(temp_layer.fields())
-                    tc_point = QgsGeometry.fromWkt(matching_feature['tc_cfg_point'])  # 从字段 tc_cfg_point 创建 目标小区扇区的原点
-
-                    # 目标小区
-                    if matching_feature['tc_coverage_type'] == '室内':
-                        tc_new_geom = tc_point.buffer(30 * 0.000009, 4)  # 室内站为 30米的近似圆,  15 segments 为圆弧精度
-                    else:
-                        if matching_feature['tc_azimuth'] >= 0:
-                            radius=sector_radius
-                            azimuth = matching_feature['tc_azimuth']
-                            beamwidth = net_to_beamwidth[matching_feature['tc_net']]
-                            tc_new_geom = create_sector(tc_point, azimuth, radius, beamwidth, 15)
-                        else:
-                            tc_new_geom = None
-                            print(f"tc_azimuth异常值{matching_feature['tc_azimuth']}")
-                    tc_new_feature.setGeometry(tc_new_geom)  # 设置要素的几何图形
-                    tc_new_feature.setAttributes(matching_feature.attributes())  # 复制属性
-                    tc_new_feature['same_or_opposite'] = 'region_tc'  # 设置 "same_or_opposite" 列的值为 "tc"  标识为 500米范围内的 目标小区
-                    new_distance_features.append(tc_new_feature)
-
-            print('region_eci_set:', region_eci_set)
-
-            # 提交修改
-            provider.addFeatures(new_distance_features)
-
-
-
-
-
-
-
-
-            # 创建新要素并添加到临时图层  (目标小区的图形)
-
-            new_features=[]
-            tc_ecis = []
-            # 添加目标小区扇区到 临时图层
-            for matching_feature_id in matching_feature_ids:
-                matching_feature = source_layer.getFeature(int(matching_feature_id))
-                new_feature = QgsFeature(temp_layer.fields())
-                tc_point = QgsGeometry.fromWkt(matching_feature['tc_cfg_point'])   # 从字段 tc_cfg_point 创建 目标小区扇区的原点
-                if matching_feature['tc_coverage_type']=='室内':
-                    new_geom = tc_point.buffer(30*0.000009, 4)                 # 室内站为 30米的近似圆,  15 segments 为圆弧精度
-                else:
-                    if matching_feature['tc_azimuth']>=0:
-
-                        radius = sector_radius
-                        azimuth = matching_feature['tc_azimuth']
-                        beamwidth = net_to_beamwidth[matching_feature['tc_net']]
-                        new_geom = create_sector(tc_point, azimuth, radius, beamwidth, 15)
-
-                    else:
-                        new_geom = None
-                        print(f"tc_azimuth异常值{matching_feature['tc_azimuth']}")
-                # new_geom = QgsGeometry.fromWkt(matching_feature['tc_sector'])   # 从字段 tc_sector 创建 图形
-                new_feature.setGeometry(new_geom)  # 复制几何
-                new_feature.setAttributes(matching_feature.attributes())  # 复制属性
-                new_features.append(new_feature)
-                tc_ecis.append(matching_feature['tc_eci'])
-            print("tc_ecis: ",tc_ecis)
-            # 提交修改
-            provider.addFeatures(new_features)
-
-
-
-
-
-
-
-
-
-
-            # 创建新要素并添加到临时图层  (源小区的图形)
-            new_sc_feature = QgsFeature(source_layer.fields())
-            sc_point = source_feature.geometry()                   # 源小区扇区的原点
-            if source_feature['sc_coverage_type']=='室内':
-                new_sc_geom = sc_point.buffer(30*0.000009, 4)                 # 室内站为 30米的近似圆,  15 segments 为圆弧精度
-            else:
-                if source_feature['sc_azimuth']>=0:
-
-                    radius = sector_radius
-                    azimuth = source_feature['sc_azimuth']
-                    beamwidth = net_to_beamwidth[source_feature['sc_net']]
-                    new_sc_geom = create_sector(sc_point, azimuth, radius, beamwidth, 15)
-
-                else:
-                    new_sc_geom = None
-                    print(f"sc_azimuth异常值{source_feature['sc_azimuth']}")
-            new_sc_feature.setGeometry(new_sc_geom)                 # 设置几何图形
-            sc_filed = [sc_eci,'source',source_feature['sc_city'],source_feature['sc_net'],
-                        source_feature['sc_cjf'],source_feature['sc_is_share'],source_feature['sc_ventor'],
-                        source_feature['sc_band'],source_feature['sc_bandwidth'],source_feature['sc_azimuth'],
-                        source_feature['sc_coverage_type'],source_feature['sc_coverage_region']
-                        ]
-            new_sc_feature.setAttributes(sc_filed)  # 设置属性 只设置 sc_eci 值 , 其他值均为 null
-            provider.addFeatures([new_sc_feature])
-
-
-
-
-
-
-            # 刷新图层
-            temp_layer.updateExtents()
-
-            # 将临时图层添加到项目
-            QgsProject.instance().addMapLayer(temp_layer)
-            print("#########################################")
-
-            # 激活图层
-            if source_layer:
-                iface.setActiveLayer(source_layer)
-            # 强制刷新地图画布
-            iface.mapCanvas().refresh()
-            layer = temp_layer
-
-            for feature in layer.getFeatures():
-                feature_symbol = band_to_color(feature)
-                apply_feature_symbol(layer, feature, feature_symbol)
-
-            # 强制刷新地图画布
-            # iface.mapCanvas().refresh()
-
-
-
-
-
-
-
-
-        except RuntimeError as e:
-            print(e)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def destination_point(lon, lat, distance, azimuth_deg):
-    """
-    根据起点、距离和方位角计算目标点坐标（使用Haversine公式）
-    :param lon: 起点经度
-    :param lat: 起点纬度
-    :param distance: 距离（米）
-    :param azimuth_deg: 方位角（度）
-    :return: QgsPointXY 目标点
-    """
-    azimuth_rad = math.radians(azimuth_deg)
-    lat_rad = math.radians(lat)
-    lon_rad = math.radians(lon)
-    R = 6371000  # 地球平均半径（米）
-
-    delta = distance / R  # 角距离（弧度）
-
-    # 计算新纬度
-    new_lat_rad = math.asin(
-        math.sin(lat_rad) * math.cos(delta) + 
-        math.cos(lat_rad) * math.sin(delta) * math.cos(azimuth_rad)
-    )
-
-    # 计算新经度
-    new_lon_rad = lon_rad + math.atan2(
-        math.sin(azimuth_rad) * math.sin(delta) * math.cos(lat_rad),
-        math.cos(delta) - math.sin(lat_rad) * math.sin(new_lat_rad)
-    )
-
-    # 转换为度数并返回点
-    return QgsPointXY(math.degrees(new_lon_rad), math.degrees(new_lat_rad))
-
-def create_sector(location, azimuth, radius, beamwidth, step_angle=15):
-    """
-    创建扇形多边形几何体
-    :param location: 中心点 (QgsPointXY 或 QgsGeometry点)
-    :param azimuth: 主方向方位角（度）
-    :param radius: 半径（米）
-    :param beam_width: 波束宽度（度）
-    :param step_angle: 生成精度（度，默认15）
-    :return: QgsGeometry 多边形
-    """
-    # 处理输入点类型
-    if isinstance(location, QgsGeometry):
-        if location.wkbType() == QgsWkbTypes.Point and location.wkbType() != QgsWkbTypes.MultiPoint:
-            location_point = location.asPoint()
-        else:
-            raise ValueError("Location must be a single point geometry")
-    elif isinstance(location, QgsPointXY):
-        location_point = location
-    else:
-        raise TypeError("Location must be QgsPointXY or QgsGeometry point")
-
-    # 计算起止角度并归一化
-    start_angle = (azimuth - beamwidth / 2) % 360
-    end_angle = (azimuth + beamwidth / 2) % 360
-
-    points = [location_point]  # 初始化点集
-
-    # 生成圆弧点
-    current_angle_deg = 0.0
-    while current_angle_deg <= beamwidth:
-        total_angle = (start_angle + current_angle_deg) % 360
-        pt = destination_point(location_point.x(), location_point.y(), radius, total_angle)
-        points.append(pt)
-        current_angle_deg += step_angle
-
-    points.append(location_point)  # 闭合多边形
-
-    # 创建并验证几何
-    polygon = QgsGeometry.fromPolygonXY([points])
-    if not polygon.isGeosValid():
-        polygon = polygon.makeValid()
-
-    # 处理可能的多部分几何
-    if polygon.isMultipart():
-        parts = polygon.asMultiPolygon()
-        if parts:
-            polygon = QgsGeometry.fromPolygonXY(parts[0])
-
-    return polygon
-
-
-
-def select_distance_features(select_layer, source_fid, distance=500):
-    """
-    获取指定要素周围指定距离内的所有要素
-    :param select_layer: 要查询的矢量图层（QgsVectorLayer）
-    :param source_fid: 目标要素id
-    :param distance: 搜索距离（米）
-    :return: 匹配要素列表（List[QgsFeature]）
-    """
-
-    from qgis.core import (
-        QgsGeometry,
-        QgsCoordinateTransform,
-        QgsCoordinateReferenceSystem,
-        QgsProject,
-        QgsSpatialIndex,
-        QgsPointXY
-    )
-
-    def get_utm_epsg(lon: float, lat: float) -> int:
-        """根据经纬度计算UTM带EPSG代码"""
-        utm_zone = int((lon + 180) // 6) + 1
-        return 32600 + utm_zone if lat >= 0 else 32700 + utm_zone
-
-    select_feature = select_layer.getFeature(source_fid)
-    # 验证输入有效性
-    if not select_layer.isValid():
-        raise ValueError("无效的输入图层")
-    if not select_feature.hasGeometry():
-        return []
-
-    # 获取目标几何体 v  source_feature.geometry()
-    target_geom = QgsGeometry(select_feature.geometry())
-    if target_geom.isEmpty():
-        return []
-
-    # 坐标系处理
-    source_crs = select_layer.crs()
-    is_geographic = source_crs.isGeographic()
-    transform = None
-
-    # 地理坐标系转换
-    if is_geographic:
-        # 计算目标点UTM带
-        original_point = target_geom.asPoint()
-        utm_epsg = get_utm_epsg(original_point.x(), original_point.y())
-        dest_crs = QgsCoordinateReferenceSystem(utm_epsg)
-
-        # 创建坐标系转换器
-        transform = QgsCoordinateTransform(source_crs, dest_crs, QgsProject.instance())
-        target_geom.transform(transform)
-    else:
-        dest_crs = source_crs
-
-    # 生成缓冲区几何
-    buffer_geom = target_geom.buffer(distance, 4)
-    if buffer_geom.isEmpty():
-        return []
-
-
-    try:
-        # 获取空间索引对象
-        select_spatial_index = spatial_index.get(select_layer.id(),None)
-        if select_spatial_index is None:
-            spatial_index[select_layer.id()] = QgsSpatialIndex(select_layer.getFeatures())  #  添加索引对象
-            select_spatial_index = spatial_index[select_layer.id()]
-
-    except KeyError:
-        return []
-    # 计算查询边界框
-    if is_geographic:
-        # 转换缓冲区范围回原坐标系
-        reverse_transform = QgsCoordinateTransform(dest_crs, source_crs, QgsProject.instance())
-        bbox = buffer_geom.boundingBox()
-        corners = [
-            QgsPointXY(bbox.xMinimum(), bbox.yMinimum()),
-            QgsPointXY(bbox.xMaximum(), bbox.yMinimum()),
-            QgsPointXY(bbox.xMaximum(), bbox.yMaximum()),
-            QgsPointXY(bbox.xMinimum(), bbox.yMaximum())
-        ]
-        transformed_corners = [reverse_transform.transform(p) for p in corners]
-        query_bbox = QgsRectangle(
-            min(p.x() for p in transformed_corners),
-            min(p.y() for p in transformed_corners),
-            max(p.x() for p in transformed_corners),
-            max(p.y() for p in transformed_corners)
-        )
-    else:
-        query_bbox = buffer_geom.boundingBox()
-
-    # 初步空间筛选
-    candidate_ids = select_spatial_index.intersects(query_bbox)
-    return candidate_ids
-
-# 调用事例
-# select_layer = iface.activeLayer()
-# select_feature = select_layer.getFeature(int(2654))
-# select_distance_features(select_layer, select_feature, 500)
-
-
-
-
-
-
-def apply_feature_symbol(layer, feature, symbol):
-    """
-    为指定要素应用自定义符号
-    :param layer: QgsVectorLayer - 要素所在的矢量图层
-    :param feature_id: int - 目标要素的ID
-    :param symbol: QgsSymbol - 要应用的符号（如 QgsFillSymbol）
-    :return: bool - 是否成功
-    """
-    feature_id = feature.id()
-    if feature['same_or_opposite'] in ['region_sc', 'source']:
-        is_sc = 'sc'
-    elif feature['same_or_opposite'] in ['region_tc', 'same','opposite']:
-        is_sc = 'tc'
-    same_or_opposite = feature['same_or_opposite']
-
-
-
-    # 校验输入有效性
-    if not layer.isValid():
-        return False
-
-    if not feature_id>0:
-        return False
-
-    if not symbol:
-        return False
-
-    # 获取或创建规则渲染器
-    renderer = layer.renderer()
-    if not isinstance(renderer, QgsRuleBasedRenderer):
-        # 创建根规则
-        root_rule = QgsRuleBasedRenderer.Rule(None)
-        # 克隆原始渲染器的规则（若存在）
-        if renderer and hasattr(renderer, 'rootRule'):
-            root_rule.appendChild(renderer.rootRule().clone())
-        # 创建新规则渲染器并设置
-        renderer = QgsRuleBasedRenderer(root_rule)
-        layer.setRenderer(renderer)
-
-    # 操作规则树
-    root_rule = renderer.rootRule()
-    # 删除旧规则（基于要素ID）
-    for child in root_rule.children():
-        if child.filterExpression() == f"$id = {feature_id}":
-            root_rule.removeChild(child)
-
-    # 添加新规则
-    label = f"band_{feature[is_sc+'_band']}_{same_or_opposite}"
-    new_rule = QgsRuleBasedRenderer.Rule(symbol.clone())
-    new_rule.setFilterExpression(f"$id = {feature_id}")
-    new_rule.setLabel(label)
-    root_rule.appendChild(new_rule)
-
-    # 强制刷新图例显示
-    _update_legend(layer)
-
-    # 刷新渲染
-    layer.triggerRepaint()
-    if iface:
-        iface.mapCanvas().refresh()
-
-
-
-def _update_legend(layer):
-    """更新图层图例显示"""
-    # 方法2: 刷新图层树视图（推荐）
-    if iface:
-        iface.layerTreeView().refreshLayerSymbology(layer.id())
-
-    # 刷新界面组件
-    layer.triggerRepaint()
-    if iface:
-        iface.layerTreeView().refreshLayerSymbology(layer.id())
-        iface.mapCanvas().refreshAllLayers()
-
-    # 兼容QGIS <3.14的传统方法
-    try:
-        from qgis.core import Qgis
-        if int(Qgis.QGIS_VERSION.split('.')[1]) <=14:
-            from qgis.core import QgsMapLayerLegendUtils
-            QgsMapLayerLegendUtils.refreshLayerLegend(layer)
-    except Exception as e:
-        print(e)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # 激活工具
 selectTool = MultiSelectMapTool(iface.mapCanvas())
 iface.mapCanvas().setMapTool(selectTool)
 
-# selectTool.create_temp_layer()
+
 
 
 

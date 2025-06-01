@@ -21,22 +21,16 @@
  *                                                                         *
  ***************************************************************************/
 """
-import sys,os
-debuger_path = os.path.join(os.path.dirname(__file__),'pydevd-pycharm.egg')
-print(debuger_path)
-sys.path.append(debuger_path)
 
-import pydevd_pycharm
+from .config import select_distance_features,create_temp_layer,deduplicate_by_key
 
+from .config import LayerMonitor,spatial_index
 
-
-# 导入图层触发器  主要用于添加索引对象 和移除临时图层
-from  .layerMonitor import LayerMonitor,spatial_index
 
 import os
 import configparser
 from qgis.PyQt import uic, QtWidgets
-from qgis.core import QgsProject,QgsSpatialIndex,QgsFeatureRequest
+from qgis.core import QgsProject,QgsSpatialIndex,QgsFeatureRequest,QgsRectangle
 from PyQt5.QtWidgets import  QListWidgetItem
 
 
@@ -49,33 +43,35 @@ SEARCH_FORM_CLASS, _ = uic.loadUiType(os.path.join(
 
 class searchDialog(QtWidgets.QDialog, SEARCH_FORM_CLASS):
     def __init__(self, parent=None):
-        super(showSameOppositeDialog, self).__init__(parent)
+        super(searchDialog, self).__init__(parent)
         self.setupUi(self)
+        self.update_layer_combobox()             # 更新图层 下拉框
         self.init_ui_connections()         # 初始化UI组件,连接信号与槽函数
-        self.populate_layers()             # 更新图层 下拉框
 
 
     def init_ui_connections(self):
-        self.pushButton.accepted.connect(self.search_cells)                      # 连接信号与槽函数
-        self.comboBox_layer.toggled.connect(self.update_comboBox_search_type_combobox)      # 连接信号与槽函数
+        self.pushButton.clicked.connect(self.search_cells)                      # 连接信号与槽函数
+        self.comboBox_layer.currentIndexChanged.connect(self.update_field_comboBox)      # 连接信号与槽函数
 
     def search_cells(self):
+        self.listWidget.clear()
         # 查找小区
-        print('search_cells')
+        print(f'search {self.comboBox_search_type.currentText()}: {self.lineEdit.text()}.')
         layer = self.get_current_layer()     # 获取当前选中的图层对象
         if not layer:
-            print(layer)
+            print(f'选择图层无效: {layer}.')
             return
         search_type = self.comboBox_search_type.currentText()
         search_text = self.lineEdit.text()
-        try:
-            # 获取空间索引对象
-            select_spatial_index = spatial_index.get(layer.id(), None)
-            if select_spatial_index is None:
-                spatial_index[layer.id()] = QgsSpatialIndex(layer.getFeatures())  # 添加索引对象
-                select_spatial_index = spatial_index[layer.id()]
-        except KeyError:
-            return []
+
+        # try:
+        #     # 获取空间索引对象
+        #     select_spatial_index = spatial_index.get(layer.id(), None)
+        #     if select_spatial_index is None:
+        #         spatial_index[layer.id()] = QgsSpatialIndex(layer.getFeatures())  # 添加索引对象
+        #         select_spatial_index = spatial_index[layer.id()]
+        # except KeyError:
+        #     return []
 
         # 构建查询
         expression = f'"{search_type}" LIKE \'%{search_text}%\''
@@ -83,28 +79,56 @@ class searchDialog(QtWidgets.QDialog, SEARCH_FORM_CLASS):
 
         # 执行查询
         matching_features = list(layer.getFeatures(request))
-        for feature in matching_features:
-            sc_eci = feature.get('sc_eci','')
-            # sc_cellname = feature.get('sc_cellname','')
+        # found_features 列表去重
+        matching_features = deduplicate_by_key( matching_features, 'sc_eci')
+
+        for feature_id in matching_features:
+            feature = layer.getFeature(feature_id)
+            sc_eci = feature.attribute('sc_eci')
+            # sc_cellname = feature.get('sc_cellname','')  没有sc_cellname字段
             display_value = f"{feature.attribute('sc_eci')},{feature.attribute('sc_net')},{feature.attribute('sc_cjf')},{feature.attribute('sc_ventor')},{feature.attribute('sc_band')},{feature.attribute('sc_coverage_type')},{feature.attribute('sc_coverage_region')}"
             item = QListWidgetItem(display_value)
             item.setData(1024, (layer, feature.id()))
             self.listWidget.addItem(item)
-            self.listWidget.itemDoubleClicked.connect(self.accept)
+
+        self.listWidget.itemDoubleClicked.connect(self.draw_cell)
 
 
 
+    def draw_cell(self):
+        selected_item = self.listWidget.currentItem()
+        print(f'draw_cell,双击列表项: {selected_item.text()}')
+        if selected_item:
+            selected_layer, selected_fid = selected_item.data(1024)
+            selected_feature = selected_layer.getFeature(int(selected_fid))
 
-    # results = []
-    # request = QgsFeatureRequest().setFilterFids(candidate_ids)
-    # results = [f for f in select_layer.getFeatures(request)]
+            # 选择要素500米范围内的所有要素
+            source_region = selected_feature["sc_coverage_region"]
+            distance_dict = {'市区': 500, '县城': 800, '乡镇': 1000, '农村': 1500}
+            distance = distance_dict[source_region]
+            source_distance_features = select_distance_features(selected_layer, selected_fid, distance=distance)
+            create_temp_layer(selected_layer, source_distance_features, selected_fid)
+            # self.canvas.refresh()
+
+        else:
+            # 信息提示弹窗
+            # QMessageBox.information(iface.mainWindow(), "提示", "没有选中要素，请检查当前激活图层！")
+            # 警告弹窗
+            # QMessageBox.warning(None, "警告", "文件路径不存在")
+            # 错误弹窗
+            # QMessageBox.critical(iface.mainWindow(), "错误", "图层加载失败")
+            print("提示", "已取消选择要素.")
 
 
 
-
-    def get_current_layer(self):
+    def get_current_layer(self,layerName = None):
+        """从图层名称获取图层对象"""
         """获取当前选中的图层对象"""
-        layer_name = self.comboBox_layer.currentText()
+        if not layerName:
+            layer_name = self.comboBox_layer.currentText()
+        else:
+            layer_name = layerName
+
         if layer_name:
             layer = QgsProject.instance().mapLayersByName(layer_name)[0]
             print('current_layer:', layer)
@@ -112,26 +136,42 @@ class searchDialog(QtWidgets.QDialog, SEARCH_FORM_CLASS):
         else:
             return None
 
-    def populate_layers(self):
+    def update_layer_combobox(self):
         """填充图层到下拉框"""
         self.comboBox_layer.clear()
         layers = QgsProject.instance().mapLayers().values()
-        self.comboBox_layer.addItems([layer.name() for layer in layers])
-        self.comboBox_layer.setCurrentIndex(self.layerComboBox.count()-1)   # 默认选中最后一个图层
+        for layer in layers:
+            if layer.type() == layer.VectorLayer:
+                # 填充图层到下拉框
+                self.comboBox_layer.addItem(layer.name())
+        # 图层下拉框默认选中最后一个图层
+        self.comboBox_layer.setCurrentIndex(self.comboBox_layer.count()-1)
+        # 填充字段下拉框
+        self.update_field_comboBox(self.comboBox_layer.currentText())
 
-    def update_comboBox_search_type_combobox(self):
+
+
+    def update_field_comboBox(self, layer_name=None):
         self.comboBox_search_type.clear()
         """根据当前图层更新字段下拉框"""
-        layer = self.get_current_layer()     # 获取当前选中的图层对象
+        if not layer_name:
+            layer = self.get_current_layer(layer_name)     # 获取当前选中的图层对象
+        else:
+            # 获取当前选择的图层名称
+            currentLayerName = self.comboBox_layer.currentText()
+            layer = self.get_current_layer(currentLayerName)
+
         if not layer:
-            print(layer)
+            print(f'未找到图层: {layer_name}')
             return
-        fields = [field.name() for field in layer.fields() if field.type() == 'str']         # 获取当前图层字段列表
+        for field in layer.fields():
+            if field.name() in ['sc_eci','sc_net','sc_cjf','sc_ventor','sc_band','sc_coverage_type','sc_coverage_region']:
+                # 填充字段到下拉框
+                self.comboBox_search_type.addItem(field.name())
 
         self.comboBox_search_type.setStyleSheet("background: #66F8DC")
-        self.comboBox_search_type.addItems(fields)  # wkt相关控件下拉框添加字段
 
-        # 选中第一个字段
+        # 选中'sc_eci'字段
         self.comboBox_search_type.setCurrentIndex(self.getComboBoxItemIndex(self.comboBox_search_type,'sc_eci'))
 
     def  getComboBoxItemIndex(self, comboBox, itemText):
@@ -208,7 +248,6 @@ class showSameOppositeDialog(QtWidgets.QDialog, CONFIG_FORM_CLASS):
 
 
     def update_wkt_controls_state(self):
-        pydevd_pycharm.settrace('localhost', port=53001, stdoutToServer=True, stderrToServer=True)  # 开启调试
         """更新控件可用状态"""
         """根据当前图层更新字段下拉框"""
         layer = self.get_current_layer()     # 获取当前选中的图层对象
@@ -243,7 +282,6 @@ class showSameOppositeDialog(QtWidgets.QDialog, CONFIG_FORM_CLASS):
             combo.setStyleSheet("" if wkt_editable else "background: #F0F0F0")
 
     def update_lonlat_controls_state(self):
-        pydevd_pycharm.settrace('localhost', port=53001, stdoutToServer=True, stderrToServer=True)  # 开启调试
         """更新控件可用状态"""
         """根据当前图层更新字段下拉框"""
         layer = self.get_current_layer()     # 获取当前选中的图层对象
@@ -316,3 +354,6 @@ class showSameOppositeDialog(QtWidgets.QDialog, CONFIG_FORM_CLASS):
             self.config.write(configfile)
 
         self.accept()
+
+
+
